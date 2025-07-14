@@ -1,4 +1,5 @@
-import React from 'react';
+// src/App.js
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import BoardList from './components/BoardList';
@@ -8,7 +9,9 @@ import Login from './components/Login';
 import Register from './components/Register';
 import ManagerDashboard from './components/ManagerDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { isAuthenticated, isManager, isAdminOrAbove } from './api/AuthApi';
+import ServerNotice from './components/ServerNotice';
+import { isAuthenticated, isManager, isAdminOrAbove, initializeAuth } from './api/AuthApi';
+import { checkServerHealth, startServerHealthMonitoring } from './api/ServerHealthApi';
 import styled from 'styled-components';
 
 const AppContainer = styled.div`
@@ -28,6 +31,30 @@ const Footer = styled.footer`
   border-top: 1px solid #ddd;
 `;
 
+const LoadingScreen = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 18px;
+  color: #666;
+`;
+
+const LoadingSpinner = styled.div`
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 2s linear infinite;
+  margin-right: 15px;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 // 인증이 필요한 라우트를 위한 컴포넌트
 const PrivateRoute = ({ children }) => {
   return isAuthenticated() ? children : <Navigate to="/login" />;
@@ -44,6 +71,127 @@ const AdminRoute = ({ children }) => {
 };
 
 function App() {
+  const [serverStatus, setServerStatus] = useState(null);
+  const [showServerNotice, setShowServerNotice] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [healthMonitorCleanup, setHealthMonitorCleanup] = useState(null);
+
+  // 앱 초기화 및 서버 상태 체크
+  useEffect(() => {
+    const initializeApp = async () => {
+      console.log('🚀 앱 초기화 시작...');
+      
+      try {
+        // 1. 서버 상태 먼저 체크
+        const healthStatus = await checkServerHealth();
+        setServerStatus(healthStatus);
+        
+        if (!healthStatus.isOnline) {
+          console.log('❌ 서버 연결 실패 - 공지사항 표시');
+          setShowServerNotice(true);
+          setIsInitializing(false);
+          return;
+        }
+        
+        // 2. 서버가 온라인이면 인증 상태 초기화
+        await initializeAuth();
+        
+        // 3. 서버 상태 모니터링 시작
+        const cleanup = startServerHealthMonitoring(
+          (status) => {
+            setServerStatus(status);
+            
+            // 서버가 다운되면 공지사항 표시
+            if (!status.isOnline && !showServerNotice) {
+              setShowServerNotice(true);
+            }
+            
+            // 서버가 복구되면 공지사항 숨김
+            if (status.isOnline && showServerNotice) {
+              setShowServerNotice(false);
+            }
+          },
+          60000 // 60초마다 체크
+        );
+        
+        setHealthMonitorCleanup(() => cleanup);
+        
+      } catch (error) {
+        console.error('❌ 앱 초기화 실패:', error);
+        // 초기화 실패 시에도 일단 앱은 실행
+        setServerStatus({
+          isOnline: true,
+          status: 'initialization_failed',
+          message: '앱 초기화에 실패했지만 계속 진행합니다.'
+        });
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeApp();
+
+    // 컴포넌트 언마운트 시 모니터링 정리
+    return () => {
+      if (healthMonitorCleanup) {
+        healthMonitorCleanup();
+      }
+    };
+  }, []);
+
+  // 서버 재연결 시도 핸들러
+  const handleServerRetry = async () => {
+    setIsInitializing(true);
+    
+    const healthStatus = await checkServerHealth();
+    setServerStatus(healthStatus);
+    
+    if (healthStatus.isOnline) {
+      setShowServerNotice(false);
+      
+      // 인증 상태 다시 초기화
+      try {
+        await initializeAuth();
+      } catch (error) {
+        console.error('인증 초기화 실패:', error);
+      }
+    }
+    
+    setIsInitializing(false);
+  };
+
+  // 공지사항 닫기 핸들러 (비상용)
+  const handleDismissNotice = () => {
+    setShowServerNotice(false);
+  };
+
+  // 서버 공지사항이 표시되어야 하는 경우
+  if (showServerNotice && serverStatus && !serverStatus.isOnline) {
+    return (
+      <ServerNotice 
+        serverStatus={serverStatus}
+        onRetry={handleServerRetry}
+        onDismiss={handleDismissNotice}
+      />
+    );
+  }
+
+  // 앱 초기화 중인 경우
+  if (isInitializing) {
+    return (
+      <LoadingScreen>
+        <LoadingSpinner />
+        <div>
+          <div>시스템 초기화 중...</div>
+          <div style={{ fontSize: '14px', color: '#999', marginTop: '8px' }}>
+            서버 연결 및 인증 상태를 확인하고 있습니다.
+          </div>
+        </div>
+      </LoadingScreen>
+    );
+  }
+
+  // 정상적인 앱 렌더링
   return (
     <Router>
       <AppContainer>

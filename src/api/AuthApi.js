@@ -1,3 +1,4 @@
+// src/api/AuthApi.js (서버 연결 상태 감지 향상)
 import axios from 'axios';
 
 // 🌐 HTTP로 다시 변경 (HTTPS 대신)
@@ -8,7 +9,72 @@ const BASE_URL = process.env.NODE_ENV === 'production'
 // Axios 인스턴스 생성
 const apiClient = axios.create({
   baseURL: BASE_URL,
+  timeout: 10000, // 10초 타임아웃
 });
+
+// 서버 연결 상태 전역 변수
+let isServerConnected = true;
+let serverConnectionCallbacks = [];
+
+// 서버 연결 상태 변경 시 호출될 콜백 등록
+export const onServerConnectionChange = (callback) => {
+  serverConnectionCallbacks.push(callback);
+  return () => {
+    serverConnectionCallbacks = serverConnectionCallbacks.filter(cb => cb !== callback);
+  };
+};
+
+// 서버 연결 상태 알림
+const notifyServerConnectionChange = (connected, error = null) => {
+  const wasConnected = isServerConnected;
+  isServerConnected = connected;
+  
+  if (wasConnected !== connected) {
+    serverConnectionCallbacks.forEach(callback => {
+      try {
+        callback(connected, error);
+      } catch (err) {
+        console.error('서버 연결 상태 콜백 오류:', err);
+      }
+    });
+  }
+};
+
+// 서버 연결 오류 감지 함수
+const detectServerConnectionError = (error) => {
+  if (!error) return false;
+  
+  // 네트워크 오류 패턴들
+  const networkErrorPatterns = [
+    'Network Error',
+    'ECONNREFUSED',
+    'ENOTFOUND', 
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'ERR_NETWORK',
+    'ERR_INTERNET_DISCONNECTED'
+  ];
+  
+  // 오류 메시지 체크
+  const errorMessage = error.message || '';
+  const isNetworkError = networkErrorPatterns.some(pattern => 
+    errorMessage.includes(pattern)
+  );
+  
+  // 오류 코드 체크
+  const errorCode = error.code || '';
+  const isConnectionError = networkErrorPatterns.some(pattern => 
+    errorCode.includes(pattern)
+  );
+  
+  // 타임아웃 체크
+  const isTimeout = error.code === 'ECONNABORTED' || errorMessage.includes('timeout');
+  
+  // 서버 응답이 아예 없는 경우
+  const noResponse = !error.response;
+  
+  return isNetworkError || isConnectionError || isTimeout || noResponse;
+};
 
 // 토큰 갱신 중인지 확인하는 플래그
 let isRefreshing = false;
@@ -67,8 +133,6 @@ const getTokenRemainingTime = (token) => {
 
 // 자동 로그아웃 및 알림
 const handleTokenExpiration = (message = '로그인이 만료되었습니다. 다시 로그인해주세요.') => {
-  console.log('🔴 토큰 만료 처리:', message);
-  
   // 토큰 정리
   clearAuthData();
   
@@ -98,18 +162,20 @@ apiClient.interceptors.request.use(
     if (token) {
       // 토큰 만료 체크
       if (isTokenExpired(token)) {
-        console.log('🔄 토큰 만료 감지 - 자동 갱신 시도');
-        
         try {
           const newToken = await refreshTokenSilently();
           if (newToken) {
             config.headers.Authorization = `Bearer ${newToken}`;
-            console.log('✅ 토큰 자동 갱신 성공');
           } else {
             throw new Error('토큰 갱신 실패');
           }
         } catch (error) {
-          console.error('❌ 토큰 자동 갱신 실패:', error);
+          // 서버 연결 오류인지 확인
+          if (detectServerConnectionError(error)) {
+            notifyServerConnectionChange(false, error);
+            return Promise.reject(error);
+          }
+          
           handleTokenExpiration('세션이 만료되었습니다. 다시 로그인해주세요.');
           return Promise.reject(error);
         }
@@ -125,17 +191,28 @@ apiClient.interceptors.request.use(
   }
 );
 
-// 응답 인터셉터 - 토큰 만료 시 자동 갱신
+// 응답 인터셉터 - 토큰 만료 시 자동 갱신 및 서버 연결 상태 감지
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // 성공적인 응답이면 서버 연결 상태 업데이트
+    notifyServerConnectionChange(true);
+    return response;
+  },
   async (error) => {
     const { config, response } = error;
     
-    console.log('🔴 API 오류:', response?.status, response?.data);
+    // 서버 연결 오류 감지
+    if (detectServerConnectionError(error)) {
+      notifyServerConnectionChange(false, error);
+      return Promise.reject(error);
+    }
+    
+    // 서버 연결은 되지만 5xx 오류인 경우
+    if (response?.status >= 500) {
+      notifyServerConnectionChange(true); // 연결은 되지만 서버 오류
+    }
     
     if (response?.status === 401 && !config._retry) {
-      console.log('🔄 401 오류 - 토큰 갱신 시도');
-      
       if (isRefreshing) {
         // 이미 토큰 갱신 중이면 대기
         return new Promise((resolve) => {
@@ -170,8 +247,12 @@ apiClient.interceptors.response.use(
         config.headers.Authorization = `Bearer ${accessToken}`;
         return apiClient(config);
       } catch (refreshError) {
-        console.error('🔴 토큰 갱신 실패:', refreshError);
-        handleTokenExpiration('인증이 만료되었습니다. 다시 로그인해주세요.');
+        // 토큰 갱신도 서버 연결 오류인지 확인
+        if (detectServerConnectionError(refreshError)) {
+          notifyServerConnectionChange(false, refreshError);
+        } else {
+          handleTokenExpiration('인증이 만료되었습니다. 다시 로그인해주세요.');
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -192,6 +273,8 @@ const refreshTokenSilently = async () => {
 
     const response = await axios.post(`${BASE_URL}/auth/refresh`, { 
       refreshToken: refreshTokenStr 
+    }, {
+      timeout: 5000 // 토큰 갱신은 짧은 타임아웃
     });
     
     const { accessToken, refreshToken: newRefreshToken } = response.data;
@@ -203,20 +286,24 @@ const refreshTokenSilently = async () => {
     
     return accessToken;
   } catch (error) {
-    console.error('❌ 자동 토큰 갱신 실패:', error);
     return null;
   }
 };
 
+// 나머지 함수들은 기존과 동일하게 유지...
+// (register, login, refreshToken, logout, setToken, getToken 등)
+
 // 사용자 등록 (회원가입)
 export const register = async (userData) => {
   try {
-    console.log('📝 회원가입 요청:', userData);
     const response = await apiClient.post('/auth/register', userData);
-    console.log('✅ 회원가입 성공:', response.data);
     return response.data;
   } catch (error) {
-    console.error('❌ 회원가입 실패:', error);
+    // 서버 연결 오류인지 확인
+    if (detectServerConnectionError(error)) {
+      notifyServerConnectionChange(false, error);
+    }
+    
     throw error;
   }
 };
@@ -224,19 +311,10 @@ export const register = async (userData) => {
 // 사용자 로그인
 export const login = async (credentials) => {
   try {
-    console.log('🔐 로그인 API 요청 시작:', credentials);
-    
     const response = await apiClient.post('/auth/login', credentials);
-    
-    console.log('📨 서버 응답 상태:', response.status);
-    console.log('📨 서버 응답 데이터:', response.data);
     
     // 응답 데이터 구조 확인
     const { accessToken, refreshToken, user } = response.data;
-    
-    console.log('🔑 AccessToken 확인:', accessToken ? `${accessToken.substring(0, 20)}...` : 'NULL');
-    console.log('🔄 RefreshToken 확인:', refreshToken ? `${refreshToken.substring(0, 20)}...` : 'NULL');
-    console.log('👤 User 확인:', user ? user.username : 'NULL');
     
     if (!accessToken) {
       throw new Error('서버에서 AccessToken을 받지 못했습니다.');
@@ -255,67 +333,24 @@ export const login = async (credentials) => {
     setRefreshToken(refreshToken);
     setUser(user);
     
-    console.log('✅ 로그인 처리 완료');
-    
     // 자동 토큰 갱신 타이머 시작
     startTokenRefreshTimer();
     
+    // 서버 연결 상태 업데이트
+    notifyServerConnectionChange(true);
+    
     return response.data;
   } catch (error) {
-    console.error('❌ 로그인 API 실패:', error);
-    console.error('❌ 에러 메시지:', error.message);
-    console.error('❌ 응답 상태:', error.response?.status);
-    console.error('❌ 응답 데이터:', error.response?.data);
+    // 서버 연결 오류인지 확인
+    if (detectServerConnectionError(error)) {
+      notifyServerConnectionChange(false, error);
+    }
+    
     throw error;
   }
 };
 
-// 토큰 갱신
-export const refreshToken = async () => {
-  try {
-    const refreshTokenStr = getRefreshToken();
-    if (!refreshTokenStr) {
-      throw new Error('Refresh token이 없습니다.');
-    }
-
-    const response = await apiClient.post('/auth/refresh', { 
-      refreshToken: refreshTokenStr 
-    });
-    const { accessToken, refreshToken: newRefreshToken } = response.data;
-    
-    setToken(accessToken);
-    if (newRefreshToken) {
-      setRefreshToken(newRefreshToken);
-    }
-    
-    // 자동 토큰 갱신 타이머 재시작
-    startTokenRefreshTimer();
-    
-    return accessToken;
-  } catch (error) {
-    console.error('❌ 토큰 갱신 실패:', error);
-    throw error;
-  }
-};
-
-// 로그아웃
-export const logout = async () => {
-  try {
-    const refreshTokenStr = getRefreshToken();
-    if (refreshTokenStr) {
-      await apiClient.post('/auth/logout', { refreshToken: refreshTokenStr });
-    }
-    clearAuthData();
-    stopTokenRefreshTimer();
-  } catch (error) {
-    console.error('❌ 로그아웃 실패:', error);
-    // 서버 오류가 있어도 클라이언트 데이터는 정리
-    clearAuthData();
-    stopTokenRefreshTimer();
-  }
-};
-
-// 토큰 저장/조회/삭제 함수들
+// 기존의 다른 함수들도 유지 (토큰 관리, 권한 체크 등)
 export const setToken = (token) => {
   localStorage.setItem('accessToken', token);
   console.log('💾 Access Token 저장됨');
@@ -376,78 +411,62 @@ export const hasRole = (role) => {
   return user && user.role === role;
 };
 
-// 사용자가 관리자인지 확인
-export const isAdmin = () => {
-  return hasRole('ROLE_ADMIN');
-};
+// 권한 체크 함수들
+export const isAdmin = () => hasRole('ROLE_ADMIN');
+export const isModerator = () => hasRole('ROLE_MODERATOR');
+export const isManager = () => hasRole('ROLE_MANAGER');
+export const isAdminOrAbove = () => hasRole('ROLE_ADMIN') || hasRole('ROLE_MANAGER');
+export const isModeratorOrAbove = () => hasRole('ROLE_MODERATOR') || hasRole('ROLE_ADMIN') || hasRole('ROLE_MANAGER');
 
-// 사용자가 관리자 회원인지 확인
-export const isModerator = () => {
-  return hasRole('ROLE_MODERATOR');
-};
+// 토큰 갱신
+export const refreshToken = async () => {
+  try {
+    const refreshTokenStr = getRefreshToken();
+    if (!refreshTokenStr) {
+      throw new Error('Refresh token이 없습니다.');
+    }
 
-// 사용자가 매니저인지 확인
-export const isManager = () => {
-  return hasRole('ROLE_MANAGER');
-};
-
-// 사용자가 관리자 이상 권한인지 확인 (관리자 또는 매니저)
-export const isAdminOrAbove = () => {
-  return hasRole('ROLE_ADMIN') || hasRole('ROLE_MANAGER');
-};
-
-// 사용자가 관리자회원 이상 권한인지 확인 (관리자회원, 관리자, 매니저)
-export const isModeratorOrAbove = () => {
-  return hasRole('ROLE_MODERATOR') || hasRole('ROLE_ADMIN') || hasRole('ROLE_MANAGER');
-};
-
-// 사용자가 특정 카테고리의 관리자 회원인지 확인
-export const isModeratorForCategory = (categoryId) => {
-  const user = getCurrentUser();
-  return user && 
-         user.role === 'ROLE_MODERATOR' && 
-         user.managedCategoryIds && 
-         user.managedCategoryIds.includes(Number(categoryId));
-};
-
-// 권한 레벨 확인 (숫자로 반환)
-export const getUserLevel = () => {
-  const user = getCurrentUser();
-  if (!user) return 0;
-  
-  switch (user.role) {
-    case 'ROLE_MANAGER': return 4;
-    case 'ROLE_ADMIN': return 3;
-    case 'ROLE_MODERATOR': return 2;
-    case 'ROLE_USER': return 1;
-    default: return 0;
+    const response = await apiClient.post('/auth/refresh', { 
+      refreshToken: refreshTokenStr 
+    });
+    const { accessToken, refreshToken: newRefreshToken } = response.data;
+    
+    setToken(accessToken);
+    if (newRefreshToken) {
+      setRefreshToken(newRefreshToken);
+    }
+    
+    // 자동 토큰 갱신 타이머 재시작
+    startTokenRefreshTimer();
+    
+    return accessToken;
+  } catch (error) {
+    console.error('❌ 토큰 갱신 실패:', error);
+    
+    // 서버 연결 오류인지 확인
+    if (detectServerConnectionError(error)) {
+      notifyServerConnectionChange(false, error);
+    }
+    
+    throw error;
   }
 };
 
-// 권한명을 한글로 변환
-export const getRoleDisplayName = (role) => {
-  switch (role) {
-    case 'ROLE_MANAGER': return '매니저';
-    case 'ROLE_ADMIN': return '관리자';
-    case 'ROLE_MODERATOR': return '관리자회원';
-    case 'ROLE_USER': return '일반회원';
-    default: return '알 수 없음';
+// 로그아웃
+export const logout = async () => {
+  try {
+    const refreshTokenStr = getRefreshToken();
+    if (refreshTokenStr) {
+      await apiClient.post('/auth/logout', { refreshToken: refreshTokenStr });
+    }
+    clearAuthData();
+    stopTokenRefreshTimer();
+  } catch (error) {
+    console.error('❌ 로그아웃 실패:', error);
+    // 서버 오류가 있어도 클라이언트 데이터는 정리
+    clearAuthData();
+    stopTokenRefreshTimer();
   }
-};
-
-// 토큰 상태 확인 (디버깅용)
-export const getTokenStatus = () => {
-  const token = getToken();
-  if (!token) return { valid: false, message: '토큰 없음' };
-  
-  const remainingTime = getTokenRemainingTime(token);
-  const expired = isTokenExpired(token);
-  
-  return {
-    valid: !expired,
-    remainingTime,
-    message: expired ? '토큰 만료됨' : `${remainingTime}분 남음`
-  };
 };
 
 // 자동 토큰 갱신 타이머
@@ -466,17 +485,15 @@ const startTokenRefreshTimer = () => {
     const refreshTime = (remainingTime - 5) * 60 * 1000;
     
     tokenRefreshTimer = setTimeout(async () => {
-      console.log('⏰ 자동 토큰 갱신 시작');
       try {
         await refreshToken();
-        console.log('✅ 자동 토큰 갱신 완료');
       } catch (error) {
-        console.error('❌ 자동 토큰 갱신 실패:', error);
-        handleTokenExpiration('세션 갱신에 실패했습니다. 다시 로그인해주세요.');
+        // 서버 연결 오류가 아닌 경우에만 로그아웃 처리
+        if (!detectServerConnectionError(error)) {
+          handleTokenExpiration('세션 갱신에 실패했습니다. 다시 로그인해주세요.');
+        }
       }
     }, refreshTime);
-    
-    console.log(`⏰ 토큰 자동 갱신 타이머 설정: ${Math.floor(refreshTime / 1000 / 60)}분 후`);
   }
 };
 
@@ -484,7 +501,6 @@ const stopTokenRefreshTimer = () => {
   if (tokenRefreshTimer) {
     clearTimeout(tokenRefreshTimer);
     tokenRefreshTimer = null;
-    console.log('⏰ 토큰 갱신 타이머 정지');
   }
 };
 
@@ -492,27 +508,71 @@ const stopTokenRefreshTimer = () => {
 export const initializeAuth = async () => {
   const token = getToken();
   if (!token) {
-    console.log('🔍 초기화: 토큰 없음');
     return false;
   }
   
   if (isTokenExpired(token)) {
-    console.log('🔄 초기화: 토큰 만료 - 자동 갱신 시도');
     try {
       await refreshTokenSilently();
       startTokenRefreshTimer();
-      console.log('✅ 초기화: 토큰 갱신 성공');
       return true;
     } catch (error) {
-      console.error('❌ 초기화: 토큰 갱신 실패');
-      clearAuthData();
+      // 서버 연결 오류가 아닌 경우에만 데이터 삭제
+      if (!detectServerConnectionError(error)) {
+        clearAuthData();
+      }
       return false;
     }
   } else {
-    console.log('✅ 초기화: 토큰 유효');
     startTokenRefreshTimer();
     return true;
   }
+};
+
+// 나머지 유틸리티 함수들...
+export const isModeratorForCategory = (categoryId) => {
+  const user = getCurrentUser();
+  return user && 
+         user.role === 'ROLE_MODERATOR' && 
+         user.managedCategoryIds && 
+         user.managedCategoryIds.includes(Number(categoryId));
+};
+
+export const getUserLevel = () => {
+  const user = getCurrentUser();
+  if (!user) return 0;
+  
+  switch (user.role) {
+    case 'ROLE_MANAGER': return 4;
+    case 'ROLE_ADMIN': return 3;
+    case 'ROLE_MODERATOR': return 2;
+    case 'ROLE_USER': return 1;
+    default: return 0;
+  }
+};
+
+export const getRoleDisplayName = (role) => {
+  switch (role) {
+    case 'ROLE_MANAGER': return '매니저';
+    case 'ROLE_ADMIN': return '관리자';
+    case 'ROLE_MODERATOR': return '관리자회원';
+    case 'ROLE_USER': return '일반회원';
+    default: return '알 수 없음';
+  }
+};
+
+export const getTokenStatus = () => {
+  const token = getToken();
+  if (!token) return { valid: false, message: '토큰 없음' };
+  
+  const remainingTime = getTokenRemainingTime(token);
+  const expired = isTokenExpired(token);
+  
+  return {
+    valid: !expired,
+    remainingTime,
+    message: expired ? '토큰 만료됨' : `${remainingTime}분 남음`
+  };
 };
 
 export default apiClient;
