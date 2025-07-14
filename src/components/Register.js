@@ -65,12 +65,20 @@ const LoginLink = styled.div`
   text-align: center;
 `;
 
+const HelpText = styled.small`
+  color: #666;
+  font-size: 12px;
+  margin-top: 2px;
+  display: block;
+`;
+
 const Register = () => {
   const [userData, setUserData] = useState({
     username: '',
     password: '',
     email: '',
-    name: ''
+    name: '',
+    nickname: ''
   });
   
   const [error, setError] = useState('');
@@ -87,6 +95,27 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    // 간단한 유효성 검사
+    if (!userData.username.trim()) {
+      setError('사용자 이름을 입력해주세요.');
+      return;
+    }
+    
+    if (!userData.password.trim()) {
+      setError('비밀번호를 입력해주세요.');
+      return;
+    }
+    
+    if (!userData.email.trim()) {
+      setError('이메일을 입력해주세요.');
+      return;
+    }
+    
+    if (!userData.name.trim()) {
+      setError('이름을 입력해주세요.');
+      return;
+    }
     
     try {
       await register(userData);
@@ -113,8 +142,10 @@ const Register = () => {
             name="username"
             value={userData.username}
             onChange={handleChange}
+            placeholder="사용자 이름을 입력하세요"
             required
           />
+          <HelpText>로그인 시 사용할 ID입니다.</HelpText>
         </FormGroup>
         
         <FormGroup>
@@ -125,6 +156,7 @@ const Register = () => {
             name="password"
             value={userData.password}
             onChange={handleChange}
+            placeholder="비밀번호를 입력하세요"
             required
           />
         </FormGroup>
@@ -137,6 +169,7 @@ const Register = () => {
             name="email"
             value={userData.email}
             onChange={handleChange}
+            placeholder="이메일을 입력하세요"
             required
           />
         </FormGroup>
@@ -149,8 +182,25 @@ const Register = () => {
             name="name"
             value={userData.name}
             onChange={handleChange}
+            placeholder="실명을 입력하세요"
             required
           />
+        </FormGroup>
+        
+        <FormGroup>
+          <Label htmlFor="nickname">닉네임</Label>
+          <Input
+            type="text"
+            id="nickname"
+            name="nickname"
+            value={userData.nickname}
+            onChange={handleChange}
+            placeholder="닉네임을 입력하세요 (선택사항)"
+          />
+          <HelpText>
+            닉네임을 입력하지 않으면 이름이 닉네임으로 사용됩니다. 
+            게시글과 댓글에서 표시되는 이름입니다.
+          </HelpText>
         </FormGroup>
         
         <Button type="submit">회원가입</Button>

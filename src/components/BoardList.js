@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { fetchPosts, fetchPostsByCategory, fetchCategory } from '../api/BoardApi';
+import { fetchCommentCount } from '../api/CommentApi';
 import styled from 'styled-components';
 
 // 기존 스타일 유지
@@ -70,6 +71,17 @@ const CategoryLabel = styled.span`
   margin-left: 8px;
 `;
 
+const CommentCount = styled.span`
+  display: inline-block;
+  padding: 2px 6px;
+  background-color: #ff9800;
+  color: white;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-left: 8px;
+  font-weight: bold;
+`;
+
 // 클릭 가능한 행 스타일
 const ClickableRow = styled.tr`
   cursor: pointer;
@@ -80,11 +92,15 @@ const ClickableRow = styled.tr`
   }
 `;
 
+const TitleCell = styled(Td)`
+  position: relative;
+`;
+
 const BoardList = () => {
   const { categoryId } = useParams();
-  // useNavigate를 올바르게 호출해야 합니다
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
+  const [commentCounts, setCommentCounts] = useState({});
   const [category, setCategory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -109,6 +125,22 @@ const BoardList = () => {
         }
         
         setPosts(data);
+        
+        // 각 게시글의 댓글 수 가져오기
+        const counts = {};
+        await Promise.all(
+          data.map(async (post) => {
+            try {
+              const count = await fetchCommentCount(post.id);
+              counts[post.id] = count;
+            } catch (error) {
+              console.error(`댓글 수 조회 실패 (게시글 ${post.id}):`, error);
+              counts[post.id] = 0;
+            }
+          })
+        );
+        setCommentCounts(counts);
+        
         setLoading(false);
       } catch (err) {
         setError('게시글을 불러오는 중 오류가 발생했습니다.');
@@ -121,7 +153,6 @@ const BoardList = () => {
 
   // 게시글 행 클릭 시 상세 페이지로 이동하는 핸들러
   const handleRowClick = (postId) => {
-    // useNavigate 훅으로 할당된 navigate 함수 사용
     navigate(`/post/${postId}`);
   };
 
@@ -152,12 +183,15 @@ const BoardList = () => {
             posts.map((post) => (
               <ClickableRow key={post.id} onClick={() => handleRowClick(post.id)}>
                 <Td>{post.id}</Td>
-                <Td>
+                <TitleCell>
                   {post.title}
                   {!categoryId && post.categoryName && (
                     <CategoryLabel>{post.categoryName}</CategoryLabel>
                   )}
-                </Td>
+                  {commentCounts[post.id] > 0 && (
+                    <CommentCount>{commentCounts[post.id]}</CommentCount>
+                  )}
+                </TitleCell>
                 <Td>{post.author}</Td>
                 <Td>{new Date(post.createdDate).toLocaleDateString()}</Td>
               </ClickableRow>

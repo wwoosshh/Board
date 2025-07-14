@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { fetchCategories } from '../api/BoardApi';
-import { isAuthenticated, getCurrentUser, logout, isAdmin, isModerator } from '../api/AuthApi';
+import { isAuthenticated, getCurrentUser, logout, isAdmin, isModerator, isManager, isAdminOrAbove } from '../api/AuthApi';
 
+// Styled Components 정의 (컴포넌트 함수 외부에서 정의)
 const HeaderContainer = styled.header`
   background-color: #333;
   color: white;
@@ -82,7 +83,7 @@ const DropdownButton = styled.button`
 `;
 
 const DropdownMenu = styled.div`
-  display: ${props => props["data-isopen"] ? 'block' : 'none'};
+  display: ${props => props.isopen ? 'block' : 'none'};
   position: absolute;
   background-color: #333;
   min-width: 160px;
@@ -114,6 +115,23 @@ const UserName = styled.span`
   margin-right: 10px;
 `;
 
+const RoleBadge = styled.span`
+  background-color: ${props => {
+    switch (props.role) {
+      case 'ROLE_MANAGER': return '#9C27B0';
+      case 'ROLE_ADMIN': return '#F44336';
+      case 'ROLE_MODERATOR': return '#FF9800';
+      default: return '#4CAF50';
+    }
+  }};
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin-left: 8px;
+`;
+
+// Header 컴포넌트
 const Header = () => {
   const [categories, setCategories] = useState([]);
   const [boardDropdownOpen, setBoardDropdownOpen] = useState(false);
@@ -137,10 +155,33 @@ const Header = () => {
     loadCategories();
   }, []);
   
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-    window.location.reload(); // 페이지 새로고침하여 인증 상태 업데이트
+  const handleLogout = async () => {
+    try {
+      console.log('🚪 로그아웃 시작');
+      await logout();
+      console.log('✅ 로그아웃 완료');
+      
+      // 홈으로 이동
+      navigate('/');
+      
+      // 상태 업데이트를 위해 페이지 새로고침
+      window.location.reload();
+    } catch (error) {
+      console.error('❌ 로그아웃 중 오류:', error);
+      // 오류가 발생해도 로컬 데이터는 정리
+      window.location.href = '/';
+    }
+  };
+
+  // 권한명을 한글로 변환
+  const getRoleDisplayName = (role) => {
+    switch (role) {
+      case 'ROLE_MANAGER': return '매니저';
+      case 'ROLE_ADMIN': return '관리자';
+      case 'ROLE_MODERATOR': return '관리자회원';
+      case 'ROLE_USER': return '일반회원';
+      default: return '일반회원';
+    }
   };
   
   return (
@@ -152,7 +193,7 @@ const Header = () => {
             <DropdownButton onClick={() => setBoardDropdownOpen(!boardDropdownOpen)}>
               게시판 목록 ▼
             </DropdownButton>
-            <DropdownMenu data-isopen={boardDropdownOpen}>
+            <DropdownMenu isopen={boardDropdownOpen}>
               {categories.map(category => (
                 <DropdownItem 
                   key={category.id} 
@@ -171,20 +212,35 @@ const Header = () => {
             <NavItem to="/login" onClick={() => alert('로그인이 필요합니다.')}>글쓰기</NavItem>
           )}
           
-          {/* 관리자 메뉴 */}
-          {isAdmin() && (
-            <NavItem to="/admin">관리자</NavItem>
+          {/* 권한별 관리 메뉴 */}
+          {authenticated && currentUser && (
+            <>
+              {/* 매니저 메뉴 (최고 권한) */}
+              {currentUser.role === 'ROLE_MANAGER' && (
+                <NavItem to="/manager">매니저</NavItem>
+              )}
+              
+              {/* 관리자 메뉴 (매니저가 아닌 관리자만) */}
+              {currentUser.role === 'ROLE_ADMIN' && (
+                <NavItem to="/admin">관리자</NavItem>
+              )}
+            </>
           )}
           
           {/* 인증 상태에 따른 메뉴 */}
-          {authenticated ? (
+          {authenticated && currentUser ? (
             <UserInfo>
-              <UserName>{currentUser.username}</UserName>
+              <UserName>
+                {currentUser.username}
+                <RoleBadge role={currentUser.role}>
+                  {getRoleDisplayName(currentUser.role)}
+                </RoleBadge>
+              </UserName>
               <DropdownContainer>
                 <DropdownButton onClick={() => setUserDropdownOpen(!userDropdownOpen)}>
                   ▼
                 </DropdownButton>
-                <DropdownMenu data-isopen={userDropdownOpen}>
+                <DropdownMenu isopen={userDropdownOpen}>
                   <DropdownItem 
                     to="/profile"
                     onClick={() => setUserDropdownOpen(false)}

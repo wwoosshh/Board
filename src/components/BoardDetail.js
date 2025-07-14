@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { fetchPost, deletePost } from '../api/BoardApi';
-import { isAuthenticated, getCurrentUser, isAdmin, isModerator, isModeratorForCategory } from '../api/AuthApi';
+import { isAuthenticated, getCurrentUser, isManager, isAdminOrAbove, isModeratorOrAbove } from '../api/AuthApi';
+import CommentSection from './CommentSection';
 import styled from 'styled-components';
 
 // 스타일 컴포넌트 정의
@@ -99,7 +100,6 @@ const DeleteButton = styled(Button)`
 
 // BoardDetail 컴포넌트
 const BoardDetail = () => {
-  // 컴포넌트 내용은 이전과 동일
   const { id } = useParams();
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
@@ -151,19 +151,35 @@ const BoardDetail = () => {
     }
   };
   
-  // 사용자에게 수정/삭제 권한이 있는지 확인
+  // 사용자에게 수정/삭제 권한이 있는지 확인 (권한 체계 수정)
   const hasPermission = () => {
     if (!authenticated || !currentUser || !post) return false;
     
+    // 매니저는 모든 게시글 수정/삭제 가능
+    if (isManager()) {
+      console.log('👑 매니저 권한으로 수정/삭제 가능');
+      return true;
+    }
+    
     // 관리자는 모든 게시글 수정/삭제 가능
-    if (isAdmin()) return true;
+    if (isAdminOrAbove()) {
+      console.log('🔑 관리자 권한으로 수정/삭제 가능');
+      return true;
+    }
+    
+    // 관리자회원은 모든 게시글 수정/삭제 가능
+    if (isModeratorOrAbove()) {
+      console.log('🛡️ 관리자회원 권한으로 수정/삭제 가능');
+      return true;
+    }
     
     // 본인 글이면 수정/삭제 가능
-    if (post.userId && post.userId === currentUser.id) return true;
+    if (post.userId && post.userId === currentUser.id) {
+      console.log('👤 본인 글 수정/삭제 가능');
+      return true;
+    }
     
-    // 관리자 회원이고 해당 카테고리 담당이면 수정/삭제 가능
-    if (isModerator() && post.categoryId && isModeratorForCategory(post.categoryId)) return true;
-    
+    console.log('❌ 수정/삭제 권한 없음');
     return false;
   };
 
@@ -200,6 +216,9 @@ const BoardDetail = () => {
           </div>
         )}
       </ButtonGroup>
+
+      {/* 댓글 섹션 추가 */}
+      <CommentSection postId={parseInt(id)} />
     </DetailContainer>
   );
 };

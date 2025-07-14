@@ -6,7 +6,9 @@ import BoardDetail from './components/BoardDetail';
 import BoardForm from './components/BoardForm';
 import Login from './components/Login';
 import Register from './components/Register';
-import { isAuthenticated } from './api/AuthApi';
+import ManagerDashboard from './components/ManagerDashboard';
+import AdminDashboard from './components/AdminDashboard';
+import { isAuthenticated, isManager, isAdminOrAbove } from './api/AuthApi';
 import styled from 'styled-components';
 
 const AppContainer = styled.div`
@@ -31,6 +33,16 @@ const PrivateRoute = ({ children }) => {
   return isAuthenticated() ? children : <Navigate to="/login" />;
 };
 
+// 매니저 전용 라우트를 위한 컴포넌트
+const ManagerRoute = ({ children }) => {
+  return isAuthenticated() && isManager() ? children : <Navigate to="/login" />;
+};
+
+// 관리자 이상 권한 라우트를 위한 컴포넌트
+const AdminRoute = ({ children }) => {
+  return isAuthenticated() && isAdminOrAbove() ? children : <Navigate to="/login" />;
+};
+
 function App() {
   return (
     <Router>
@@ -51,6 +63,26 @@ function App() {
             {/* 인증 관련 경로 */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            
+            {/* 매니저 전용 경로 */}
+            <Route 
+              path="/manager/*" 
+              element={
+                <ManagerRoute>
+                  <ManagerDashboard />
+                </ManagerRoute>
+              } 
+            />
+            
+            {/* 관리자 이상 권한 경로 */}
+            <Route 
+              path="/admin/*" 
+              element={
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
+              } 
+            />
             
             {/* 인증이 필요한 경로 */}
             <Route 

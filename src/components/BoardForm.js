@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchPost, createPost, updatePost, fetchCategories } from '../api/BoardApi';
+import { getCurrentUser } from '../api/AuthApi';
 import styled from 'styled-components';
 
 const FormContainer = styled.div`
@@ -56,6 +57,26 @@ const Textarea = styled.textarea`
   font-family: inherit;
 `;
 
+const AuthorDisplay = styled.div`
+  padding: 8px;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: #666;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+`;
+
+const AuthorBadge = styled.span`
+  background-color: #4CAF50;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-left: 10px;
+`;
+
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: space-between;
@@ -92,11 +113,11 @@ const BoardForm = () => {
   const { id, categoryId } = useParams();
   const navigate = useNavigate();
   const isEdit = !!id;
+  const currentUser = getCurrentUser();
   
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    author: '',
     categoryId: categoryId || ''
   });
   
@@ -117,14 +138,13 @@ const BoardForm = () => {
           setFormData({
             title: postData.title,
             content: postData.content,
-            author: postData.author,
             categoryId: postData.categoryId || ''
           });
-        } else if (categoryId) {
-          // URL에서 categoryId가 있으면 설정
+        } else {
+          // 새 글 작성 시 카테고리 설정
           setFormData(prev => ({
             ...prev,
-            categoryId: categoryId
+            categoryId: categoryId || ''
           }));
         }
         
@@ -155,24 +175,27 @@ const BoardForm = () => {
       return;
     }
     
-    if (!formData.author.trim()) {
-      alert('작성자 이름을 입력해주세요.');
-      return;
-    }
-    
     if (!formData.categoryId) {
       alert('게시판을 선택해주세요.');
       return;
     }
 
+    // 작성자는 서버에서 자동으로 설정됨 (현재 로그인한 사용자의 닉네임)
+    const submitData = {
+      title: formData.title,
+      content: formData.content,
+      categoryId: formData.categoryId
+      // author 필드는 제거 - 서버에서 자동 설정
+    };
+
     try {
       if (isEdit) {
         // 수정 모드: 게시글 업데이트
-        await updatePost(id, formData);
+        await updatePost(id, submitData);
         alert('게시글이 수정되었습니다.');
       } else {
         // 작성 모드: 새 게시글 생성
-        await createPost(formData);
+        await createPost(submitData);
         alert('게시글이 등록되었습니다.');
       }
       navigate(formData.categoryId ? `/category/${formData.categoryId}` : '/');
@@ -184,6 +207,17 @@ const BoardForm = () => {
   const handleCancel = () => {
     if (window.confirm('작성 중인 내용이 저장되지 않습니다. 정말 취소하시겠습니까?')) {
       navigate(isEdit ? `/post/${id}` : '/');
+    }
+  };
+
+  // 권한 표시 함수
+  const getRoleDisplayName = (role) => {
+    switch (role) {
+      case 'ROLE_MANAGER': return '매니저';
+      case 'ROLE_ADMIN': return '관리자';
+      case 'ROLE_MODERATOR': return '관리자회원';
+      case 'ROLE_USER': return '일반회원';
+      default: return '회원';
     }
   };
 
@@ -226,17 +260,22 @@ const BoardForm = () => {
           />
         </FormGroup>
         
+        {/* 작성자 정보 표시 (수정 불가) */}
         <FormGroup>
-          <Label htmlFor="author">작성자</Label>
-          <Input
-            type="text"
-            id="author"
-            name="author"
-            value={formData.author}
-            onChange={handleChange}
-            placeholder="작성자 이름을 입력하세요"
-            required
-          />
+          <Label>작성자</Label>
+          <AuthorDisplay>
+            {currentUser ? (
+              <>
+                {currentUser.nickname || currentUser.name || currentUser.username}
+                <AuthorBadge>{getRoleDisplayName(currentUser.role)}</AuthorBadge>
+              </>
+            ) : (
+              '로그인된 사용자'
+            )}
+          </AuthorDisplay>
+          <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+            작성자는 현재 로그인한 사용자의 닉네임으로 자동 설정됩니다.
+          </small>
         </FormGroup>
         
         <FormGroup>
