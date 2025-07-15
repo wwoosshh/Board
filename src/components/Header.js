@@ -151,7 +151,7 @@ const DropdownButton = styled.button`
     transition: transform 0.3s ease;
   }
   
-  ${props => props.isOpen && `
+  ${props => props.$isOpen && `
     &:after {
       transform: rotate(180deg);
     }
@@ -159,7 +159,7 @@ const DropdownButton = styled.button`
 `;
 
 const DropdownMenu = styled.div`
-  display: ${props => props.isopen ? 'block' : 'none'};
+  display: ${props => props.$isOpen ? 'block' : 'none'};
   position: absolute;
   background: white;
   min-width: 200px;
@@ -245,7 +245,7 @@ const UserName = styled.span`
 
 const RoleBadge = styled.span`
   background: ${props => {
-    switch (props.role) {
+    switch (props.$role) {
       case 'ROLE_MANAGER': return colors.danger;
       case 'ROLE_ADMIN': return colors.warning;
       case 'ROLE_MODERATOR': return colors.success;
@@ -278,7 +278,7 @@ const MobileNav = styled.div`
   display: none;
   
   @media (max-width: 768px) {
-    display: ${props => props.isOpen ? 'block' : 'none'};
+    display: ${props => props.$isOpen ? 'block' : 'none'};
     position: absolute;
     top: 100%;
     left: 0;
@@ -358,11 +358,11 @@ const Header = () => {
           <DropdownContainer>
             <DropdownButton 
               onClick={() => setBoardDropdownOpen(!boardDropdownOpen)}
-              isOpen={boardDropdownOpen}
+              $isOpen={boardDropdownOpen}
             >
               📋 게시판
             </DropdownButton>
-            <DropdownMenu isopen={boardDropdownOpen}>
+            <DropdownMenu $isOpen={boardDropdownOpen}>
               {categories.map(category => (
                 <DropdownItem 
                   key={category.id} 
@@ -403,7 +403,7 @@ const Header = () => {
                 <UserAvatar>{getUserInitial(currentUser)}</UserAvatar>
                 <div>
                   <UserName>{currentUser.username}</UserName>
-                  <RoleBadge role={currentUser.role}>
+                  <RoleBadge $role={currentUser.role}>
                     {getRoleDisplayName(currentUser.role)}
                   </RoleBadge>
                 </div>
@@ -411,11 +411,11 @@ const Header = () => {
               <DropdownContainer>
                 <DropdownButton 
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  isOpen={userDropdownOpen}
+                  $isOpen={userDropdownOpen}
                 >
                   ⚙️
                 </DropdownButton>
-                <DropdownMenu isopen={userDropdownOpen}>
+                <DropdownMenu $isOpen={userDropdownOpen}>
                   <DropdownItem 
                     to="/profile"
                     onClick={() => setUserDropdownOpen(false)}
@@ -447,7 +447,7 @@ const Header = () => {
         </MobileMenuButton>
       </HeaderContent>
       
-      <MobileNav isOpen={mobileMenuOpen}>
+      <MobileNav $isOpen={mobileMenuOpen}>
         {/* 모바일 메뉴 내용 */}
         {categories.map(category => (
           <div key={category.id} style={{ padding: '8px 0' }}>

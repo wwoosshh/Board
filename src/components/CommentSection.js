@@ -197,7 +197,7 @@ const CommentList = styled.div`
 const CommentItem = styled.div`
   padding: 24px 30px;
   border-bottom: 1px solid ${colors.border};
-  margin-left: ${props => props.isReply ? '60px' : '0'};
+  margin-left: ${props => props.$isReply ? '60px' : '0'};
   position: relative;
   transition: all 0.3s ease;
   
@@ -209,7 +209,7 @@ const CommentItem = styled.div`
     border-bottom: none;
   }
   
-  ${props => props.isReply && `
+  ${props => props.$isReply && `
     &:before {
       content: '';
       position: absolute;
@@ -550,7 +550,7 @@ const CommentSection = ({ postId }) => {
 
   // 댓글과 대댓글을 재귀적으로 렌더링
   const renderComment = (comment, isReply = false) => (
-    <CommentItem key={comment.id} isReply={isReply}>
+    <CommentItem key={comment.id} $isReply={isReply}>
       <CommentHeader2>
         <CommentAuthorSection>
           <CommentAuthorAvatar>

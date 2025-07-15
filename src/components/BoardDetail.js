@@ -145,7 +145,7 @@ const StatItem = styled.div`
   font-size: 14px;
   
   &:before {
-    content: '${props => props.icon}';
+    content: '${props => props.$icon}';
     font-size: 12px;
   }
 `;
@@ -543,8 +543,8 @@ const BoardDetail = () => {
             </AuthorSection>
             
             <PostStats>
-              <StatItem icon="👁️">조회 {post.viewCount || 0}</StatItem>
-              <StatItem icon="💬">댓글 {post.commentCount || 0}</StatItem>
+              <StatItem $icon="👁️">조회 {post.viewCount || 0}</StatItem>
+              <StatItem $icon="💬">댓글 {post.commentCount || 0}</StatItem>
             </PostStats>
           </PostMeta>
         </PostHeader>

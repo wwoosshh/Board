@@ -154,6 +154,26 @@ const MarkdownContainer = styled.div`
   h4 { font-size: 1.1em; }
   h5 { font-size: 1em; }
   h6 { font-size: 0.9em; }
+  
+  /* 이미지 스타일 */
+  img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 16px 0;
+    display: block;
+    box-shadow: 0 4px 16px ${colors.shadow};
+    border: 1px solid ${colors.border};
+  }
+  
+  /* 동영상 스타일 */
+  video {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 16px 0;
+    display: block;
+    box-shadow: 0 4px 16px ${colors.shadow};
+    border: 1px solid ${colors.border};
+  }
 `;
 
 // 마크다운 파서 함수
@@ -161,6 +181,14 @@ const parseMarkdown = (text) => {
   if (!text) return '';
   
   let html = text;
+  
+  // 0. HTML 태그를 보존 (특히 동영상 태그를 위해)
+  // 우선 html 태그를 임시 토큰으로 대체
+  const htmlTags = [];
+  html = html.replace(/<([^>]+)>/g, (match) => {
+    htmlTags.push(match);
+    return `__HTML_TAG_${htmlTags.length - 1}__`;
+  });
   
   // 1. 코드 블록 처리 (```로 감싸진 부분)
   html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
@@ -176,7 +204,10 @@ const parseMarkdown = (text) => {
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
   
-  // 5. 줄바꿈을 기준으로 분할하여 각 줄 처리
+  // 5. 이미지 처리 (![대체텍스트](이미지URL))
+  html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" />');
+  
+  // 6. 줄바꿈을 기준으로 분할하여 각 줄 처리
   const lines = html.split('\n');
   const processedLines = [];
   let inList = false;
@@ -272,11 +303,16 @@ const parseMarkdown = (text) => {
   
   html = processedLines.join('\n');
   
-  // 6. 링크 처리 [텍스트](URL)
+  // 7. 링크 처리 [텍스트](URL)
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   
-  // 7. 자동 링크 처리 (http:// 또는 https://로 시작하는 URL)
+  // 8. 자동 링크 처리 (http:// 또는 https://로 시작하는 URL)
   html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  
+  // 9. HTML 태그 복원
+  html = html.replace(/__HTML_TAG_(\d+)__/g, (match, index) => {
+    return htmlTags[parseInt(index)];
+  });
   
   return html;
 };

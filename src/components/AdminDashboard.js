@@ -203,7 +203,7 @@ const Tab = styled(Link)`
   }
   
   &:before {
-    content: '${props => props.icon}';
+    content: '${props => props.$icon}';
     font-size: 16px;
   }
 `;
@@ -225,7 +225,7 @@ const StatsGrid = styled.div`
 `;
 
 const StatCard = styled.div`
-  background: linear-gradient(135deg, ${props => props.gradient});
+  background: linear-gradient(135deg, ${props => props.$gradient});
   padding: 24px;
   border-radius: 16px;
   text-align: center;
@@ -323,7 +323,7 @@ const TableTitle = styled.h2`
   gap: 12px;
   
   &:before {
-    content: '${props => props.icon}';
+    content: '${props => props.$icon}';
     font-size: 20px;
   }
 `;
@@ -533,14 +533,14 @@ const AdminDashboard = () => {
           <Tab 
             to="/admin" 
             className={getActiveTab() === 'dashboard' ? 'active' : ''}
-            icon="📊"
+            $icon="📊"
           >
             대시보드
           </Tab>
           <Tab 
             to="/admin/users" 
             className={getActiveTab() === 'users' ? 'active' : ''}
-            icon="👥"
+            $icon="👥"
           >
             사용자 관리
           </Tab>
@@ -603,32 +603,32 @@ const AdminDashboardHome = () => {
       </PermissionNote>
 
       <StatsGrid>
-        <StatCard gradient="rgba(66, 99, 235, 1) 0%, rgba(102, 126, 234, 1) 100%">
+        <StatCard $gradient="rgba(66, 99, 235, 1) 0%, rgba(102, 126, 234, 1) 100%">
           <StatIcon>👥</StatIcon>
           <StatNumber>{stats?.total || 0}</StatNumber>
           <StatLabel>전체 사용자</StatLabel>
         </StatCard>
-        <StatCard gradient="rgba(81, 207, 102, 1) 0%, rgba(64, 192, 87, 1) 100%">
+        <StatCard $gradient="rgba(81, 207, 102, 1) 0%, rgba(64, 192, 87, 1) 100%">
           <StatIcon>👤</StatIcon>
           <StatNumber>{stats?.user || 0}</StatNumber>
           <StatLabel>일반회원</StatLabel>
         </StatCard>
-        <StatCard gradient="rgba(245, 159, 0, 1) 0%, rgba(255, 146, 43, 1) 100%">
+        <StatCard $gradient="rgba(245, 159, 0, 1) 0%, rgba(255, 146, 43, 1) 100%">
           <StatIcon>🛡️</StatIcon>
           <StatNumber>{stats?.moderator || 0}</StatNumber>
           <StatLabel>관리자회원</StatLabel>
         </StatCard>
-        <StatCard gradient="rgba(255, 212, 59, 1) 0%, rgba(252, 196, 25, 1) 100%">
+        <StatCard $gradient="rgba(255, 212, 59, 1) 0%, rgba(252, 196, 25, 1) 100%">
           <StatIcon>🔑</StatIcon>
           <StatNumber>{stats?.admin || 0}</StatNumber>
           <StatLabel>관리자</StatLabel>
         </StatCard>
-        <StatCard gradient="rgba(255, 107, 107, 1) 0%, rgba(255, 146, 43, 1) 100%">
+        <StatCard $gradient="rgba(255, 107, 107, 1) 0%, rgba(255, 146, 43, 1) 100%">
           <StatIcon>🚫</StatIcon>
           <StatNumber>{stats?.locked || 0}</StatNumber>
           <StatLabel>정지된 사용자</StatLabel>
         </StatCard>
-        <StatCard gradient="rgba(255, 146, 43, 1) 0%, rgba(252, 196, 25, 1) 100%">
+        <StatCard $gradient="rgba(255, 146, 43, 1) 0%, rgba(252, 196, 25, 1) 100%">
           <StatIcon>⚠️</StatIcon>
           <StatNumber>{stats?.warned || 0}</StatNumber>
           <StatLabel>경고받은 사용자</StatLabel>
@@ -733,7 +733,7 @@ const AdminUserManagement = () => {
       </PermissionNote>
       
       <TableHeader>
-        <TableTitle icon="👥">사용자 관리</TableTitle>
+        <TableTitle $icon="👥">사용자 관리</TableTitle>
         <div style={{ fontSize: '14px', color: colors.secondary }}>
           총 {users.length}명의 사용자 중 관리 가능: {users.filter(u => u.role !== 'ROLE_MANAGER').length}명
         </div>
