@@ -266,7 +266,7 @@ function App() {
         </Main>
         
         <Footer>
-          <p>© 2025 게시판 애플리케이션. All rights reserved.</p>
+          <p>© 2025 Connect_Team . All rights reserved.</p>
         </Footer>
       </AppContainer>
     </Router>
