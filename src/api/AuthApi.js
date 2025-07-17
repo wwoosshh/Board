@@ -3,8 +3,9 @@ import axios from 'axios';
 
 // 🌐 HTTP로 다시 변경 (HTTPS 대신)
 const BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api'  // 프록시 경로로 변경
+  ? '/api'  
   : 'http://localhost:5159/api';
+console.log('🌐 현재 BASE_URL:', BASE_URL);
 
 // Axios 인스턴스 생성
 const apiClient = axios.create({

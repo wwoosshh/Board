@@ -4,7 +4,7 @@ import apiClient from './AuthApi';
 // 단일 파일 업로드 (임시)
 export const uploadFile = async (file) => {
   try {
-    console.log('📁 파일 업로드 요청:', file.name);
+    console.log('📁 파일 업로드 요청:', file.name, file.type, file.size);
     const formData = new FormData();
     formData.append('file', file);
     
@@ -15,9 +15,12 @@ export const uploadFile = async (file) => {
     });
     
     console.log('✅ 파일 업로드 성공:', response.data);
+    console.log('생성된 파일 URL:', response.data.fileUrl);
     return response.data;
   } catch (error) {
     console.error('❌ 파일 업로드 실패:', error);
+    console.error('에러 응답:', error.response?.data);
+    console.error('에러 상태:', error.response?.status);
     throw error;
   }
 };

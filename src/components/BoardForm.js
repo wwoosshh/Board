@@ -895,86 +895,93 @@ const BoardForm = () => {
   const triggerFileInput = () => {
     mediaFileInputRef.current.click();
   };
+
+// 미디어 파일 업로드 처리 함수
+const handleMediaFileChange = async (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
   
-  // 미디어 파일 업로드 처리
-  const handleMediaFileChange = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  // 파일 유효성 검사
+  const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const supportedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+  
+  const validFiles = files.filter(file => {
+    if (selectedMediaType === 'image' && !supportedImageTypes.includes(file.type)) {
+      alert(`지원되지 않는 이미지 형식입니다: ${file.type}`);
+      return false;
+    }
     
-    // 파일 유효성 검사
-    const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    const supportedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+    if (selectedMediaType === 'video' && !supportedVideoTypes.includes(file.type)) {
+      alert(`지원되지 않는 동영상 형식입니다: ${file.type}`);
+      return false;
+    }
     
-    const validFiles = files.filter(file => {
-      if (selectedMediaType === 'image' && !supportedImageTypes.includes(file.type)) {
-        alert(`지원되지 않는 이미지 형식입니다: ${file.type}`);
-        return false;
-      }
+    if (file.size > 10 * 1024 * 1024) { // 10MB 제한
+      alert(`파일 크기가 너무 큽니다: ${file.name}`);
+      return false;
+    }
+    
+    return true;
+  });
+  
+  if (validFiles.length === 0) return;
+  
+  // 파일 업로드 진행
+  setUploadingMedia(true);
+  setUploadProgress(0);
+  
+  try {
+    const progressStep = 100 / validFiles.length;
+    const newMedia = [];
+    
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
       
-      if (selectedMediaType === 'video' && !supportedVideoTypes.includes(file.type)) {
-        alert(`지원되지 않는 동영상 형식입니다: ${file.type}`);
-        return false;
-      }
-      
-      if (file.size > 10 * 1024 * 1024) { // 10MB 제한
-        alert(`파일 크기가 너무 큽니다: ${file.name}`);
-        return false;
-      }
-      
-      return true;
-    });
-    
-    if (validFiles.length === 0) return;
-    
-    // 파일 업로드 진행
-    setUploadingMedia(true);
-    setUploadProgress(0);
-    
-    try {
-      // 각 파일 업로드
-      const progressStep = 100 / validFiles.length;
-      const newMedia = [];
-      
-      for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i];
-        
+      try {
         // 파일 업로드 API 호출
         const response = await uploadFile(file);
         
-        // 업로드된 미디어 정보 저장
+        // 백엔드 응답 구조에 맞게 수정
         if (response && response.fileName) {
           const isImage = supportedImageTypes.includes(file.type);
           const isVideo = supportedVideoTypes.includes(file.type);
           
-          // 실제 URL 경로 생성 (서버 구조에 맞게 조정 필요)
-          const fileUrl = `/api/files/${isImage ? 'images' : 'videos'}/${response.fileName}`;
+          // 올바른 URL 경로 생성
+          const fileUrl = `/api/files/temp/${response.fileName}`;
           
           newMedia.push({
-            id: response.id || Date.now(), // 서버에서 ID를 제공하지 않는 경우 임시 ID 생성
+            id: Date.now() + i, // 임시 ID 생성
             url: fileUrl,
             name: file.name,
-            type: isImage ? 'image' : 'video'
+            type: isImage ? 'image' : 'video',
+            originalResponse: response // 디버깅용
           });
         }
         
         // 진행률 업데이트
         setUploadProgress((i + 1) * progressStep);
+      } catch (fileError) {
+        console.error(`파일 업로드 실패: ${file.name}`, fileError);
+        alert(`파일 업로드 실패: ${file.name}`);
       }
-      
-      // 업로드된 미디어 목록에 추가
-      setUploadedMedia(prev => [...prev, ...newMedia]);
-      
-      // 성공 메시지 표시
-      setSuccess(`${validFiles.length}개의 ${selectedMediaType === 'image' ? '이미지' : '동영상'}가 업로드되었습니다.`);
-      
-    } catch (err) {
-      console.error('미디어 업로드 오류:', err);
-      setError('미디어 업로드 중 오류가 발생했습니다.');
-    } finally {
-      setUploadingMedia(false);
-      e.target.value = ''; // 파일 입력 초기화
     }
-  };
+    
+    // 업로드된 미디어 목록에 추가
+    setUploadedMedia(prev => [...prev, ...newMedia]);
+    
+    // 성공 메시지 표시
+    if (newMedia.length > 0) {
+      setSuccess(`${newMedia.length}개의 ${selectedMediaType === 'image' ? '이미지' : '동영상'}가 업로드되었습니다.`);
+    }
+    
+  } catch (err) {
+    console.error('미디어 업로드 오류:', err);
+    setError('미디어 업로드 중 오류가 발생했습니다.');
+  } finally {
+    setUploadingMedia(false);
+    e.target.value = ''; // 파일 입력 초기화
+  }
+};
   
   // 미디어 삽입
   const insertMedia = (media) => {
@@ -1011,48 +1018,48 @@ const BoardForm = () => {
   };
   
   const handleDrop = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
+  e.preventDefault();
+  e.stopPropagation();
+  setIsDragging(false);
+  
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length === 0) return;
+  
+  // 파일 유효성 검사 및 업로드 처리
+  const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const supportedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+  
+  const validFiles = files.filter(file => {
+    const isImage = supportedImageTypes.includes(file.type);
+    const isVideo = supportedVideoTypes.includes(file.type);
     
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
+    if (!isImage && !isVideo) {
+      alert(`지원되지 않는 파일 형식입니다: ${file.type}`);
+      return false;
+    }
     
-    // 파일 유효성 검사 및 업로드 처리
-    const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    const supportedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+    if (file.size > 10 * 1024 * 1024) { // 10MB 제한
+      alert(`파일 크기가 너무 큽니다: ${file.name}`);
+      return false;
+    }
     
-    const validFiles = files.filter(file => {
-      const isImage = supportedImageTypes.includes(file.type);
-      const isVideo = supportedVideoTypes.includes(file.type);
+    return true;
+  });
+  
+  if (validFiles.length === 0) return;
+  
+  // 파일 업로드 진행
+  setUploadingMedia(true);
+  setUploadProgress(0);
+  
+  try {
+    const progressStep = 100 / validFiles.length;
+    const newMedia = [];
+    
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
       
-      if (!isImage && !isVideo) {
-        alert(`지원되지 않는 파일 형식입니다: ${file.type}`);
-        return false;
-      }
-      
-      if (file.size > 10 * 1024 * 1024) { // 10MB 제한
-        alert(`파일 크기가 너무 큽니다: ${file.name}`);
-        return false;
-      }
-      
-      return true;
-    });
-    
-    if (validFiles.length === 0) return;
-    
-    // 파일 업로드 진행
-    setUploadingMedia(true);
-    setUploadProgress(0);
-    
-    try {
-      // 각 파일 업로드
-      const progressStep = 100 / validFiles.length;
-      const newMedia = [];
-      
-      for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i];
-        
+      try {
         // 파일 업로드 API 호출
         const response = await uploadFile(file);
         
@@ -1060,11 +1067,11 @@ const BoardForm = () => {
         if (response && response.fileName) {
           const isImage = supportedImageTypes.includes(file.type);
           
-          // 실제 URL 경로 생성 (서버 구조에 맞게 조정 필요)
-          const fileUrl = `/api/files/${isImage ? 'images' : 'videos'}/${response.fileName}`;
+          // 올바른 URL 경로 생성
+          const fileUrl = `/api/files/temp/${response.fileName}`;
           
           newMedia.push({
-            id: response.id || Date.now(),
+            id: Date.now() + i,
             url: fileUrl,
             name: file.name,
             type: isImage ? 'image' : 'video'
@@ -1073,21 +1080,26 @@ const BoardForm = () => {
         
         // 진행률 업데이트
         setUploadProgress((i + 1) * progressStep);
+      } catch (fileError) {
+        console.error(`파일 업로드 실패: ${file.name}`, fileError);
       }
-      
-      // 업로드된 미디어 목록에 추가
-      setUploadedMedia(prev => [...prev, ...newMedia]);
-      
-      // 성공 메시지 표시
-      setSuccess(`${validFiles.length}개의 파일이 업로드되었습니다.`);
-      
-    } catch (err) {
-      console.error('미디어 업로드 오류:', err);
-      setError('미디어 업로드 중 오류가 발생했습니다.');
-    } finally {
-      setUploadingMedia(false);
     }
-  };
+    
+    // 업로드된 미디어 목록에 추가
+    setUploadedMedia(prev => [...prev, ...newMedia]);
+    
+    // 성공 메시지 표시
+    if (newMedia.length > 0) {
+      setSuccess(`${newMedia.length}개의 파일이 업로드되었습니다.`);
+    }
+    
+  } catch (err) {
+    console.error('미디어 업로드 오류:', err);
+    setError('미디어 업로드 중 오류가 발생했습니다.');
+  } finally {
+    setUploadingMedia(false);
+  }
+};
 
   if (loading) {
     return (
@@ -1392,7 +1404,14 @@ const BoardForm = () => {
                       .map(media => (
                         <MediaItem key={media.id} onClick={() => insertMedia(media)}>
                           {media.type === 'image' ? (
-                            <MediaItemImage src={media.url} alt={media.name} />
+                            <MediaItemImage 
+                              src={`http://localhost:5159${media.url}`} 
+                              alt={media.name} 
+                              onError={(e) => {
+                                console.error('이미지 로드 실패:', media.url);
+                                e.target.style.display = 'none';
+                              }}
+                            />
                           ) : (
                             <div style={{ height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f9fa' }}>
                               <span style={{ fontSize: '36px' }}>🎬</span>
