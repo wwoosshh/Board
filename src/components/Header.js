@@ -352,7 +352,7 @@ const Header = () => {
   return (
     <HeaderContainer>
       <HeaderContent>
-        <Logo to="/">CONNECT v_1.0.4</Logo>
+        <Logo to="/">CONNECT v_1.5</Logo>
         
         <Nav style={{ display: window.innerWidth <= 768 ? 'none' : 'flex' }}>
           <DropdownContainer>
