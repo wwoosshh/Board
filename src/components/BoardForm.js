@@ -221,6 +221,159 @@ const Input = styled.input`
     font-weight: 400;
   }
 `;
+const InstructionCard = styled.div`
+  background: linear-gradient(135deg, rgba(66, 99, 235, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+  border: 1px solid rgba(66, 99, 235, 0.15);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+`;
+
+const InstructionTitle = styled.h4`
+  color: ${colors.primary};
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  &:before {
+    content: '💡';
+    font-size: 18px;
+  }
+`;
+
+const InstructionList = styled.ol`
+  margin: 0;
+  padding-left: 20px;
+  color: ${colors.secondary};
+  
+  li {
+    margin: 8px 0;
+    line-height: 1.6;
+    
+    &::marker {
+      color: ${colors.primary};
+      font-weight: 600;
+    }
+  }
+`;
+
+const StepHighlight = styled.span`
+  background: rgba(245, 159, 0, 0.1);
+  color: ${colors.accent};
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+`;
+
+const TipBox = styled.div`
+  background: rgba(81, 207, 102, 0.1);
+  border: 1px solid rgba(81, 207, 102, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  
+  &:before {
+    content: '💡';
+    font-size: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+`;
+
+const TipText = styled.div`
+  color: ${colors.success};
+  font-size: 14px;
+  line-height: 1.5;
+  
+  strong {
+    font-weight: 600;
+  }
+`;
+
+const QuickActionButtons = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+`;
+
+const QuickActionButton = styled.button`
+  background: ${colors.light};
+  color: ${colors.primary};
+  border: 1px solid ${colors.border};
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  &:hover {
+    background: rgba(66, 99, 235, 0.1);
+    border-color: ${colors.primary};
+  }
+  
+  &:before {
+    content: '${props => props.$icon}';
+    font-size: 12px;
+  }
+`;
+
+const ProgressSteps = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0;
+  position: relative;
+  
+  &:before {
+    content: '';
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    right: 15px;
+    height: 2px;
+    background: ${colors.border};
+    z-index: 0;
+  }
+`;
+
+const ProgressStep = styled.div`
+  background: ${props => props.$active ? colors.primary : colors.light};
+  color: ${props => props.$active ? 'white' : colors.secondary};
+  border: 2px solid ${props => props.$active ? colors.primary : colors.border};
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s ease;
+`;
+
+const StepLabel = styled.div`
+  position: absolute;
+  top: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: ${colors.secondary};
+  white-space: nowrap;
+  font-weight: 500;
+`;
 
 const Select = styled.select`
   width: 100%;
@@ -896,10 +1049,16 @@ const BoardForm = () => {
     mediaFileInputRef.current.click();
   };
 
+  // 파일 업로드 지연 함수 (서버 부하 방지)
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+
 // 미디어 파일 업로드 처리 함수
 const handleMediaFileChange = async (e) => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
+  
+  console.log(`📤 총 ${files.length}개 파일 업로드 시작`);
   
   // 파일 유효성 검사
   const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -933,52 +1092,147 @@ const handleMediaFileChange = async (e) => {
   try {
     const progressStep = 100 / validFiles.length;
     const newMedia = [];
+    const failedFiles = [];
     
+    // 순차적으로 파일 업로드 (동시 업로드 방지)
     for (let i = 0; i < validFiles.length; i++) {
       const file = validFiles[i];
       
       try {
+        console.log(`📤 파일 ${i + 1}/${validFiles.length} 업로드 시작: ${file.name}`);
+        
+        // 파일 업로드 전 잠시 대기 (서버 부하 방지)
+        if (i > 0) {
+          await delay(500); // 0.5초 대기
+        }
+        
         // 파일 업로드 API 호출
         const response = await uploadFile(file);
+        console.log(`✅ 파일 ${i + 1} 업로드 완료:`, response);
         
-        // 백엔드 응답 구조에 맞게 수정
+        // 백엔드 응답 구조 확인 및 처리
         if (response && response.fileName) {
           const isImage = supportedImageTypes.includes(file.type);
           const isVideo = supportedVideoTypes.includes(file.type);
           
-          // 올바른 URL 경로 생성
-          const fileUrl = `/api/files/temp/${response.fileName}`;
+          // 파일명 안전성 검사 (특수 문자 제거)
+          const safeFileName = response.fileName.replace(/[<>:"/\\|?*]/g, '_');
           
+          // 올바른 URL 경로 생성
+          const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+          const fileUrl = `${baseUrl}/api/files/temp/${safeFileName}`;
+          
+          console.log(`🖼️ 생성된 파일 URL: ${fileUrl}`);
+          
+          // 업로드 성공 시 미디어 목록에 추가
           newMedia.push({
-            id: Date.now() + i, // 임시 ID 생성
+            id: Date.now() + i + Math.random(), // 고유 ID 생성
             url: fileUrl,
+            fileName: safeFileName,
             name: file.name,
             type: isImage ? 'image' : 'video',
-            originalResponse: response // 디버깅용
+            size: file.size,
+            uploadedAt: new Date().toISOString(),
+            originalResponse: response
           });
+          
+          console.log(`✅ 파일 ${i + 1} 처리 완료`);
+        } else {
+          throw new Error(`서버 응답이 올바르지 않습니다: ${JSON.stringify(response)}`);
         }
         
-        // 진행률 업데이트
-        setUploadProgress((i + 1) * progressStep);
       } catch (fileError) {
-        console.error(`파일 업로드 실패: ${file.name}`, fileError);
-        alert(`파일 업로드 실패: ${file.name}`);
+        console.error(`❌ 파일 ${i + 1} 업로드 실패: ${file.name}`, fileError);
+        
+        failedFiles.push({
+          name: file.name,
+          error: fileError.message,
+          status: fileError.response?.status
+        });
+        
+        // 403 오류인 경우 특별 처리
+        if (fileError.response?.status === 403) {
+          console.warn(`🚫 파일 ${i + 1} - 403 Forbidden 오류 발생`);
+          
+          // 잠시 더 대기 후 재시도
+          await delay(1000);
+          
+          try {
+            console.log(`🔄 파일 ${i + 1} 재시도 중...`);
+            const retryResponse = await uploadFile(file);
+            
+            if (retryResponse && retryResponse.fileName) {
+              const isImage = supportedImageTypes.includes(file.type);
+              const safeFileName = retryResponse.fileName.replace(/[<>:"/\\|?*]/g, '_');
+              const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+              const fileUrl = `${baseUrl}/api/files/temp/${safeFileName}`;
+              
+              newMedia.push({
+                id: Date.now() + i + Math.random(),
+                url: fileUrl,
+                fileName: safeFileName,
+                name: file.name,
+                type: isImage ? 'image' : 'video',
+                size: file.size,
+                uploadedAt: new Date().toISOString(),
+                originalResponse: retryResponse
+              });
+              
+              console.log(`✅ 파일 ${i + 1} 재시도 성공`);
+              
+              // 실패 목록에서 제거
+              const failedIndex = failedFiles.findIndex(f => f.name === file.name);
+              if (failedIndex > -1) {
+                failedFiles.splice(failedIndex, 1);
+              }
+            }
+          } catch (retryError) {
+            console.error(`❌ 파일 ${i + 1} 재시도도 실패:`, retryError);
+          }
+        }
       }
+      
+      // 진행률 업데이트
+      setUploadProgress((i + 1) * progressStep);
     }
     
     // 업로드된 미디어 목록에 추가
-    setUploadedMedia(prev => [...prev, ...newMedia]);
-    
-    // 성공 메시지 표시
     if (newMedia.length > 0) {
-      setSuccess(`${newMedia.length}개의 ${selectedMediaType === 'image' ? '이미지' : '동영상'}가 업로드되었습니다.`);
+      setUploadedMedia(prev => [...prev, ...newMedia]);
+      
+      // 성공 메시지 표시
+      const successCount = newMedia.length;
+      const totalCount = validFiles.length;
+      
+      if (successCount === totalCount) {
+        setSuccess(`${successCount}개의 ${selectedMediaType === 'image' ? '이미지' : '동영상'}가 모두 업로드되었습니다.`);
+      } else {
+        setSuccess(`${successCount}개의 파일이 업로드되었습니다. (${totalCount - successCount}개 실패)`);
+      }
+      
+      console.log(`✅ 최종 업로드 완료: ${successCount}/${totalCount}`);
+    }
+    
+    // 실패한 파일들에 대한 오류 메시지
+    if (failedFiles.length > 0) {
+      console.error('❌ 업로드 실패한 파일들:', failedFiles);
+      
+      const failedFileNames = failedFiles.map(f => f.name).join(', ');
+      setError(`다음 파일들의 업로드가 실패했습니다: ${failedFileNames}`);
+      
+      // 403 오류가 많은 경우 특별한 안내
+      const forbidden403Count = failedFiles.filter(f => f.status === 403).length;
+      if (forbidden403Count > 0) {
+        setError(prev => prev + '\n\n💡 팁: 파일을 하나씩 업로드하거나 잠시 후 다시 시도해보세요.');
+      }
     }
     
   } catch (err) {
-    console.error('미디어 업로드 오류:', err);
-    setError('미디어 업로드 중 오류가 발생했습니다.');
+    console.error('❌ 전체 미디어 업로드 프로세스 오류:', err);
+    setError('미디어 업로드 중 오류가 발생했습니다. 파일을 하나씩 업로드해보세요.');
   } finally {
     setUploadingMedia(false);
+    setUploadProgress(0);
     e.target.value = ''; // 파일 입력 초기화
   }
 };
@@ -1025,7 +1279,9 @@ const handleMediaFileChange = async (e) => {
   const files = Array.from(e.dataTransfer.files);
   if (files.length === 0) return;
   
-  // 파일 유효성 검사 및 업로드 처리
+  console.log(`📂 드롭된 파일들 (${files.length}개):`, files.map(f => f.name));
+  
+  // 파일 유효성 검사
   const supportedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   const supportedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
   
@@ -1048,6 +1304,8 @@ const handleMediaFileChange = async (e) => {
   
   if (validFiles.length === 0) return;
   
+  console.log(`✅ 드롭 유효한 파일들 (${validFiles.length}개):`, validFiles.map(f => f.name));
+  
   // 파일 업로드 진행
   setUploadingMedia(true);
   setUploadProgress(0);
@@ -1055,49 +1313,118 @@ const handleMediaFileChange = async (e) => {
   try {
     const progressStep = 100 / validFiles.length;
     const newMedia = [];
+    const failedFiles = [];
     
+    // 순차적으로 파일 업로드 (드롭도 동일하게 처리)
     for (let i = 0; i < validFiles.length; i++) {
       const file = validFiles[i];
       
       try {
+        console.log(`📤 드롭 파일 ${i + 1}/${validFiles.length} 업로드 시작: ${file.name}`);
+        
+        // 파일 업로드 전 잠시 대기
+        if (i > 0) {
+          await delay(500);
+        }
+        
         // 파일 업로드 API 호출
         const response = await uploadFile(file);
+        console.log(`✅ 드롭 파일 ${i + 1} 업로드 완료:`, response);
         
         // 업로드된 미디어 정보 저장
         if (response && response.fileName) {
           const isImage = supportedImageTypes.includes(file.type);
+          const safeFileName = response.fileName.replace(/[<>:"/\\|?*]/g, '_');
+          const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+          const fileUrl = `${baseUrl}/api/files/temp/${safeFileName}`;
           
-          // 올바른 URL 경로 생성
-          const fileUrl = `/api/files/temp/${response.fileName}`;
+          console.log(`🖼️ 드롭 파일 URL 생성: ${fileUrl}`);
           
           newMedia.push({
-            id: Date.now() + i,
+            id: Date.now() + i + Math.random(),
             url: fileUrl,
+            fileName: safeFileName,
             name: file.name,
-            type: isImage ? 'image' : 'video'
+            type: isImage ? 'image' : 'video',
+            size: file.size,
+            uploadedAt: new Date().toISOString()
           });
         }
         
         // 진행률 업데이트
         setUploadProgress((i + 1) * progressStep);
+        
       } catch (fileError) {
-        console.error(`파일 업로드 실패: ${file.name}`, fileError);
+        console.error(`❌ 드롭 파일 ${i + 1} 업로드 실패: ${file.name}`, fileError);
+        
+        failedFiles.push({
+          name: file.name,
+          error: fileError.message,
+          status: fileError.response?.status
+        });
+        
+        // 403 오류인 경우 재시도
+        if (fileError.response?.status === 403) {
+          await delay(1000);
+          
+          try {
+            const retryResponse = await uploadFile(file);
+            if (retryResponse && retryResponse.fileName) {
+              const isImage = supportedImageTypes.includes(file.type);
+              const safeFileName = retryResponse.fileName.replace(/[<>:"/\\|?*]/g, '_');
+              const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+              const fileUrl = `${baseUrl}/api/files/temp/${safeFileName}`;
+              
+              newMedia.push({
+                id: Date.now() + i + Math.random(),
+                url: fileUrl,
+                fileName: safeFileName,
+                name: file.name,
+                type: isImage ? 'image' : 'video',
+                size: file.size,
+                uploadedAt: new Date().toISOString()
+              });
+              
+              const failedIndex = failedFiles.findIndex(f => f.name === file.name);
+              if (failedIndex > -1) {
+                failedFiles.splice(failedIndex, 1);
+              }
+            }
+          } catch (retryError) {
+            console.error(`❌ 드롭 파일 ${i + 1} 재시도 실패:`, retryError);
+          }
+        }
       }
     }
     
     // 업로드된 미디어 목록에 추가
-    setUploadedMedia(prev => [...prev, ...newMedia]);
-    
-    // 성공 메시지 표시
     if (newMedia.length > 0) {
-      setSuccess(`${newMedia.length}개의 파일이 업로드되었습니다.`);
+      setUploadedMedia(prev => [...prev, ...newMedia]);
+      
+      const successCount = newMedia.length;
+      const totalCount = validFiles.length;
+      
+      if (successCount === totalCount) {
+        setSuccess(`${successCount}개의 파일이 모두 업로드되었습니다.`);
+      } else {
+        setSuccess(`${successCount}개의 파일이 업로드되었습니다. (${totalCount - successCount}개 실패)`);
+      }
+      
+      console.log(`✅ 드롭 파일 최종 업로드 완료: ${successCount}/${totalCount}`);
+    }
+    
+    // 실패한 파일들에 대한 처리
+    if (failedFiles.length > 0) {
+      const failedFileNames = failedFiles.map(f => f.name).join(', ');
+      setError(`다음 파일들의 업로드가 실패했습니다: ${failedFileNames}`);
     }
     
   } catch (err) {
-    console.error('미디어 업로드 오류:', err);
+    console.error('❌ 드롭 미디어 업로드 오류:', err);
     setError('미디어 업로드 중 오류가 발생했습니다.');
   } finally {
     setUploadingMedia(false);
+    setUploadProgress(0);
   }
 };
 
@@ -1333,6 +1660,70 @@ const handleMediaFileChange = async (e) => {
             </MediaInsertModalHeader>
             
             <MediaInsertModalBody>
+              {/* 사용법 안내 카드 */}
+              <InstructionCard>
+                <InstructionTitle>미디어 삽입 사용법</InstructionTitle>
+                
+                <ProgressSteps>
+                  <div style={{ position: 'relative' }}>
+                    <ProgressStep $active={true}>1</ProgressStep>
+                    <StepLabel>업로드</StepLabel>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <ProgressStep $active={uploadedMedia.length > 0}>2</ProgressStep>
+                    <StepLabel>선택</StepLabel>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <ProgressStep $active={false}>3</ProgressStep>
+                    <StepLabel>완료</StepLabel>
+                  </div>
+                </ProgressSteps>
+                
+                <InstructionList>
+                  <li>
+                    <StepHighlight>1단계</StepHighlight> 아래 업로드 영역에 이미지나 동영상 파일을 
+                    <strong> 끌어다 놓거나</strong> 클릭하여 선택하세요
+                  </li>
+                  <li>
+                    <StepHighlight>2단계</StepHighlight> 업로드가 완료되면 하단에 미디어 목록이 표시됩니다
+                  </li>
+                  <li>
+                    <StepHighlight>3단계</StepHighlight> 원하는 미디어를 <strong>클릭</strong>하면 
+                    자동으로 글 내용에 삽입됩니다
+                  </li>
+                </InstructionList>
+                
+                <TipBox>
+                  <TipText>
+                    <strong>💡 팁:</strong> 여러 개의 파일을 한 번에 업로드할 수 있습니다. 
+                    각 미디어를 클릭할 때마다 현재 커서 위치에 삽입됩니다.
+                  </TipText>
+                </TipBox>
+                
+                <QuickActionButtons>
+                  <QuickActionButton 
+                    $icon="📷" 
+                    onClick={() => setSelectedMediaType('image')}
+                    style={{ 
+                      background: selectedMediaType === 'image' ? 'rgba(66, 99, 235, 0.1)' : colors.light,
+                      borderColor: selectedMediaType === 'image' ? colors.primary : colors.border
+                    }}
+                  >
+                    이미지 모드
+                  </QuickActionButton>
+                  <QuickActionButton 
+                    $icon="🎬" 
+                    onClick={() => setSelectedMediaType('video')}
+                    style={{ 
+                      background: selectedMediaType === 'video' ? 'rgba(66, 99, 235, 0.1)' : colors.light,
+                      borderColor: selectedMediaType === 'video' ? colors.primary : colors.border
+                    }}
+                  >
+                    동영상 모드
+                  </QuickActionButton>
+                </QuickActionButtons>
+              </InstructionCard>
+
               {/* 미디어 유형 선택 */}
               <MediaTypeGroup>
                 <MediaTypeTab 
@@ -1358,15 +1749,26 @@ const handleMediaFileChange = async (e) => {
                 onDrop={handleDrop}
                 $isDragging={isDragging}
               >
-                <FileDropIcon>📤</FileDropIcon>
+                <FileDropIcon>
+                  {uploadingMedia ? '⏳' : isDragging ? '📥' : '📤'}
+                </FileDropIcon>
                 <FileDropText>
-                  {selectedMediaType === 'image' 
-                    ? '클릭하여 이미지를 선택하거나 여기에 이미지 파일을 끌어다 놓으세요.'
-                    : '클릭하여 동영상을 선택하거나 여기에 동영상 파일을 끌어다 놓으세요.'}
+                  {uploadingMedia ? (
+                    '업로드 중...'
+                  ) : isDragging ? (
+                    `${selectedMediaType === 'image' ? '이미지' : '동영상'} 파일을 여기에 놓으세요`
+                  ) : (
+                    <>
+                      <strong>클릭하여 {selectedMediaType === 'image' ? '이미지' : '동영상'}를 선택</strong>하거나<br/>
+                      여기에 파일을 끌어다 놓으세요
+                    </>
+                  )}
                 </FileDropText>
-                <Button>
-                  {selectedMediaType === 'image' ? '이미지 선택' : '동영상 선택'}
-                </Button>
+                {!uploadingMedia && !isDragging && (
+                  <Button>
+                    {selectedMediaType === 'image' ? '이미지 선택' : '동영상 선택'}
+                  </Button>
+                )}
                 <FileInputHidden
                   ref={mediaFileInputRef}
                   type="file"
@@ -1381,7 +1783,15 @@ const handleMediaFileChange = async (e) => {
               {/* 업로드 진행 상태 */}
               {uploadingMedia && (
                 <div style={{ marginBottom: '20px' }}>
-                  <div style={{ marginBottom: '8px' }}>
+                  <div style={{ 
+                    marginBottom: '8px', 
+                    color: colors.primary, 
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span>📤</span>
                     업로드 중... {Math.round(uploadProgress)}%
                   </div>
                   <MediaUploadProgress>
@@ -1394,38 +1804,110 @@ const handleMediaFileChange = async (e) => {
               {uploadedMedia.length > 0 && (
                 <MediaPreviewContainer>
                   <MediaPreviewTitle>
-                    {selectedMediaType === 'image' 
-                      ? '이미지 목록' 
-                      : '동영상 목록'}
+                    📋 {selectedMediaType === 'image' ? '업로드된 이미지' : '업로드된 동영상'} 
+                    <span style={{ 
+                      color: colors.primary, 
+                      fontWeight: '600',
+                      marginLeft: '8px'
+                    }}>
+                      ({uploadedMedia.filter(m => m.type === selectedMediaType).length}개)
+                    </span>
                   </MediaPreviewTitle>
+                  
+                  <div style={{ 
+                    background: 'rgba(81, 207, 102, 0.1)', 
+                    border: '1px solid rgba(81, 207, 102, 0.2)',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                    color: colors.success,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>👆</span>
+                    <strong>아래 미디어를 클릭하면 글에 자동으로 삽입됩니다</strong>
+                  </div>
+                  
                   <MediaPreviewGrid>
                     {uploadedMedia
                       .filter(m => m.type === selectedMediaType)
                       .map(media => (
                         <MediaItem key={media.id} onClick={() => insertMedia(media)}>
-                          {media.type === 'image' ? (
-                            <MediaItemImage 
-                              src={`http://localhost:5159${media.url}`} 
-                              alt={media.name} 
-                              onError={(e) => {
-                                console.error('이미지 로드 실패:', media.url);
-                                e.target.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div style={{ height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f9fa' }}>
-                              <span style={{ fontSize: '36px' }}>🎬</span>
+                          <div style={{ position: 'relative' }}>
+                            {media.type === 'image' ? (
+                              <MediaItemImage 
+                                src={media.url}
+                                alt={media.name}
+                                onError={(e) => {
+                                  console.error('이미지 로드 실패:', media.url);
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div style={{ 
+                                height: '100px', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                backgroundColor: '#f8f9fa',
+                                borderRadius: '4px'
+                              }}>
+                                <span style={{ fontSize: '36px' }}>🎬</span>
+                              </div>
+                            )}
+                            
+                            {/* 클릭 가능 표시 */}
+                            <div style={{
+                              position: 'absolute',
+                              top: '4px',
+                              right: '4px',
+                              background: 'rgba(0, 0, 0, 0.7)',
+                              color: 'white',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              fontWeight: '600'
+                            }}>
+                              클릭
                             </div>
-                          )}
+                          </div>
                           <MediaItemTitle>{media.name}</MediaItemTitle>
                         </MediaItem>
                       ))}
                   </MediaPreviewGrid>
+                  
+                  {uploadedMedia.filter(m => m.type === selectedMediaType).length === 0 && (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '40px 20px',
+                      color: colors.secondary,
+                      fontSize: '14px'
+                    }}>
+                      <div style={{ fontSize: '48px', marginBottom: '12px', opacity: 0.5 }}>
+                        {selectedMediaType === 'image' ? '🖼️' : '🎬'}
+                      </div>
+                      아직 업로드된 {selectedMediaType === 'image' ? '이미지' : '동영상'}가 없습니다.<br/>
+                      위의 업로드 영역을 사용해 파일을 추가해보세요.
+                    </div>
+                  )}
                 </MediaPreviewContainer>
               )}
             </MediaInsertModalBody>
             
             <MediaInsertFooter>
+              <div style={{ 
+                fontSize: '12px', 
+                color: colors.secondary,
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <span>ℹ️</span>
+                지원 형식: {selectedMediaType === 'image' ? 'JPG, PNG, GIF, WebP' : 'MP4, WebM, OGG'} | 최대 10MB
+              </div>
               <CancelButton type="button" onClick={closeMediaModal}>
                 닫기
               </CancelButton>

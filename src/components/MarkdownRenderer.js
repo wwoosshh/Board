@@ -158,11 +158,46 @@ const MarkdownContainer = styled.div`
   /* 이미지 스타일 */
   img {
     max-width: 100%;
+    height: auto;
     border-radius: 8px;
     margin: 16px 0;
     display: block;
     box-shadow: 0 4px 16px ${colors.shadow};
     border: 1px solid ${colors.border};
+    transition: all 0.3s ease;
+    cursor: pointer;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px ${colors.shadow};
+    }
+    
+    /* 이미지 로딩 중일 때 */
+    &[src=""], &:not([src]) {
+      background: ${colors.light};
+      border: 2px dashed ${colors.border};
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      
+      &:before {
+        content: '🖼️ 이미지 로딩 중...';
+        color: ${colors.secondary};
+        font-size: 14px;
+      }
+    }
+    
+    /* 이미지 로드 실패 시 */
+    &.error {
+      background: rgba(255, 107, 107, 0.1);
+      border: 2px dashed ${colors.danger};
+      
+      &:before {
+        content: '❌ 이미지를 불러올 수 없습니다';
+        color: ${colors.danger};
+      }
+    }
   }
   
   /* 동영상 스타일 */
@@ -176,14 +211,44 @@ const MarkdownContainer = styled.div`
   }
 `;
 
-// 마크다운 파서 함수
+// 이미지 URL을 절대 경로로 변환하는 함수
+const normalizeImageUrl = (url) => {
+  if (!url) return '';
+  
+  // 이미 절대 URL인 경우 (http:// 또는 https://로 시작)
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // 상대 경로인 경우 절대 경로로 변환
+  if (url.startsWith('/api/')) {
+    // 개발 환경과 프로덕션 환경 구분
+    const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+    return `${baseUrl}${url}`;
+  }
+  
+  // /api/로 시작하지 않는 상대 경로인 경우
+  if (url.startsWith('/')) {
+    const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+    return `${baseUrl}${url}`;
+  }
+  
+  // 상대 경로를 /api/files/temp/ 기본 경로로 처리
+  if (!url.startsWith('/') && !url.includes('/')) {
+    const baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5159';
+    return `${baseUrl}/api/files/temp/${url}`;
+  }
+  
+  return url;
+};
+
+// 마크다운 파서 함수 (이미지 처리 개선)
 const parseMarkdown = (text) => {
   if (!text) return '';
   
   let html = text;
   
   // 0. HTML 태그를 보존 (특히 동영상 태그를 위해)
-  // 우선 html 태그를 임시 토큰으로 대체
   const htmlTags = [];
   html = html.replace(/<([^>]+)>/g, (match) => {
     htmlTags.push(match);
@@ -204,8 +269,11 @@ const parseMarkdown = (text) => {
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
   
-  // 5. 이미지 처리 (![대체텍스트](이미지URL))
-  html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" />');
+  // 5. 이미지 처리 개선 (![대체텍스트](이미지URL))
+  html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
+    const normalizedUrl = normalizeImageUrl(url.trim());
+    return `<img src="${normalizedUrl}" alt="${alt}" loading="lazy" onerror="this.classList.add('error'); console.error('이미지 로드 실패:', '${normalizedUrl}');" />`;
+  });
   
   // 6. 줄바꿈을 기준으로 분할하여 각 줄 처리
   const lines = html.split('\n');
@@ -306,8 +374,8 @@ const parseMarkdown = (text) => {
   // 7. 링크 처리 [텍스트](URL)
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   
-  // 8. 자동 링크 처리 (http:// 또는 https://로 시작하는 URL)
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  // 8. 자동 링크 처리 (http:// 또는 https://로 시작하는 URL, 단 이미 img 태그 안에 있는 것은 제외)
+  html = html.replace(/(^|[^"'])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
   
   // 9. HTML 태그 복원
   html = html.replace(/__HTML_TAG_(\d+)__/g, (match, index) => {
@@ -320,6 +388,29 @@ const parseMarkdown = (text) => {
 // MarkdownRenderer 컴포넌트
 const MarkdownRenderer = ({ content, className, style }) => {
   const htmlContent = parseMarkdown(content);
+  
+  // 디버깅을 위한 로그 (개발 환경에서만)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🎨 MarkdownRenderer - Original content:', content);
+    console.log('🎨 MarkdownRenderer - Parsed HTML:', htmlContent);
+    
+    // 이미지 URL 추출 및 확인
+    const imageMatches = content ? content.match(/!\[.*?\]\((.*?)\)/g) : [];
+    if (imageMatches) {
+      console.log('🖼️ 감지된 이미지들:', imageMatches);
+      imageMatches.forEach((match, index) => {
+        const urlMatch = match.match(/!\[.*?\]\((.*?)\)/);
+        if (urlMatch) {
+          const originalUrl = urlMatch[1];
+          const normalizedUrl = normalizeImageUrl(originalUrl);
+          console.log(`🖼️ 이미지 ${index + 1}:`, {
+            original: originalUrl,
+            normalized: normalizedUrl
+          });
+        }
+      });
+    }
+  }
   
   return (
     <MarkdownContainer 
